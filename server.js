@@ -137,7 +137,7 @@ app.get("/", (req, res) => {
 app.listen(3000, () => {
 
     console.log(
-        "🤖 Serveur NPC IA lancé sur http://localhost:3000"
+        "🤖 Serveur NPC IA lancé sur https://npc-production-c0a0.up.railway.app/"
     );
 
 });
