@@ -1,3 +1,4 @@
+
 require("dotenv").config();
 
 const express = require("express");
@@ -5,16 +6,36 @@ const { GoogleGenAI } = require("@google/genai");
 
 const app = express();
 
+// =============================================
+// CONFIGURATION
+// =============================================
+
 app.use(express.json({ limit: "10kb" }));
+
+const PORT = process.env.PORT || 3000;
+
+if (!process.env.GEMINI_API_KEY) {
+    console.error("❌ GEMINI_API_KEY manquante !");
+    process.exit(1);
+}
 
 const ai = new GoogleGenAI({
     apiKey: process.env.GEMINI_API_KEY
 });
 
+// =============================================
+// MÉMOIRE DES CONVERSATIONS
+// =============================================
+
 const conversations = new Map();
 
-// Empêche plusieurs requêtes simultanées pour le même joueur
+// Empêche plusieurs requêtes simultanées
+// pour le même joueur
 const processing = new Map();
+
+// =============================================
+// PERSONNALITÉ DU NPC
+// =============================================
 
 const SYSTEM_PROMPT = `
 Tu es une personne normale vivant dans le monde du jeu Roblox.
@@ -27,88 +48,109 @@ Tu n'es PAS un assistant virtuel.
 Tu es simplement une personne normale.
 
 Le joueur peut te poser n'importe quelle question.
-Réponds naturellement comme une vraie personne dans une conversation.
 
-Tu peux parler de ta vie, de tes goûts, de tes activités,
-du monde autour de toi et de sujets généraux.
+Réponds naturellement comme une vraie personne
+dans une conversation.
+
+Tu peux parler de :
+- ta vie
+- tes goûts
+- tes activités
+- tes opinions
+- les personnes autour de toi
+- la ville
+- le monde du jeu
+- des sujets généraux
 
 Tu peux avoir tes propres opinions et préférences.
 
 Ne parle jamais de "gardien", de "monde à protéger",
 de "mission" ou de "quête" sauf si le joueur en parle lui-même.
 
-Ne dis pas que tu es une IA sauf si le joueur te demande directement.
+Ne dis pas que tu es une IA sauf si le joueur
+te demande directement si tu es une IA.
 
-Réponds en français.
+Réponds toujours en français.
 
-Tes réponses doivent être courtes et naturelles,
-généralement 1 à 3 phrases.
+Tes réponses doivent être courtes et naturelles.
 
-Ne mets pas de markdown.
-Ne mets pas de liste.
+Généralement :
+1 à 3 phrases maximum.
+
+Ne mets pas de Markdown.
+Ne mets pas de listes.
 Ne mets pas de texte inutile.
 
 Si tu ne comprends pas parfaitement la question,
 demande simplement au joueur de préciser.
 
-Tu dois avoir l'impression d'être une vraie personne.
+Tu dois donner l'impression d'être une vraie personne.
 `;
+
+// =============================================
+// ROUTE CHAT
+// =============================================
 
 app.post("/chat", async (req, res) => {
 
-    const playerId = String(req.body?.playerId || "");
+    const playerId =
+        String(req.body?.playerId || "").trim();
+
     const message =
         typeof req.body?.message === "string"
             ? req.body.message.trim()
             : "";
 
-    console.log(
-        `📩 Requête reçue | joueur=${playerId} | message="${message}"`
-    );
+    console.log("=================================");
+    console.log("📩 NOUVELLE REQUÊTE");
+    console.log("👤 Joueur :", playerId);
+    console.log("💬 Message :", message);
+    console.log("=================================");
 
-    // ---------------------------------------------
+    // =============================================
     // VALIDATION
-    // ---------------------------------------------
+    // =============================================
 
     if (!playerId || !message) {
+
+        console.warn("⚠️ Requête invalide");
 
         return res.status(400).json({
             error: "Requête invalide"
         });
-
     }
 
     if (message.length > 300) {
 
+        console.warn("⚠️ Message trop long");
+
         return res.status(400).json({
             error: "Message trop long"
         });
-
     }
 
-    // ---------------------------------------------
-    // EMPÊCHE LES DOUBLES REQUÊTES
-    // ---------------------------------------------
+    // =============================================
+    // ANTI DOUBLE REQUÊTE
+    // =============================================
 
     if (processing.get(playerId)) {
 
         console.log(
-            `⏳ Requête ignorée : ${playerId} est déjà en train de parler.`
+            `⏳ ${playerId} est déjà en train de parler`
         );
 
         return res.status(429).json({
             error: "NPC occupé"
         });
-
     }
 
     processing.set(playerId, true);
 
     try {
 
-        // ---------------------------------------------
+        // =============================================
         // CRÉATION DE L'HISTORIQUE
-        // ---------------------------------------------
+        // =============================================
 
         if (!conversations.has(playerId)) {
 
@@ -119,36 +161,35 @@ app.post("/chat", async (req, res) => {
         const history =
             conversations.get(playerId);
 
-        // ---------------------------------------------
-        // AJOUT DU MESSAGE JOUEUR
-        // ---------------------------------------------
+        // =============================================
+        // MESSAGE DU JOUEUR
+        // =============================================
 
         history.push({
-
             role: "user",
-
             parts: [
                 {
                     text: message
                 }
             ]
-
         });
 
-        // ---------------------------------------------
-        // MÉMOIRE
-        // ---------------------------------------------
+        // =============================================
+        // HISTORIQUE RÉCENT
+        // =============================================
 
         const recentHistory =
             history.slice(-12);
 
         console.log(
-            `🧠 Gemini | historique=${recentHistory.length}`
+            `🧠 Historique envoyé à Gemini : ${recentHistory.length} messages`
         );
 
-        // ---------------------------------------------
-        // GEMINI
-        // ---------------------------------------------
+        // =============================================
+        // APPEL GEMINI
+        // =============================================
+
+        console.log("🤖 Envoi de la requête à Gemini...");
 
         const response =
             await ai.models.generateContent({
@@ -168,55 +209,54 @@ app.post("/chat", async (req, res) => {
 
             });
 
-        // ---------------------------------------------
-        // RÉCUPÉRATION RÉPONSE
-        // ---------------------------------------------
+        console.log("✅ Réponse Gemini reçue");
 
-        let answer =
-            response.text;
+        // =============================================
+        // RÉCUPÉRATION DE LA RÉPONSE
+        // =============================================
+
+        let answer = response?.text;
 
         if (typeof answer !== "string") {
-
             answer = "";
-
         }
 
-        answer =
-            answer.trim();
+        answer = answer.trim();
 
-        // ---------------------------------------------
+        // =============================================
         // RÉPONSE VIDE
-        // ---------------------------------------------
+        // =============================================
 
         if (!answer) {
 
             console.warn(
-                "⚠️ Gemini a renvoyé une réponse vide."
+                "⚠️ Gemini a renvoyé une réponse vide"
             );
 
             return res.status(500).json({
                 error: "Réponse IA vide"
             });
-
         }
 
-        // ---------------------------------------------
+        // =============================================
         // NETTOYAGE
-        // ---------------------------------------------
+        // =============================================
 
-        answer =
-            answer.replace(/```/g, "");
+        // Supprime le Markdown
+        answer = answer.replace(/```/g, "");
 
-        answer =
-            answer.replace(/\n+/g, " ");
+        // Supprime les retours à la ligne
+        answer = answer.replace(/\n+/g, " ");
 
-        answer =
-            answer.replace(/\s+/g, " ");
+        // Nettoie les espaces multiples
+        answer = answer.replace(/\s+/g, " ");
 
-        answer =
-            answer.trim();
+        answer = answer.trim();
 
-        // Roblox TTS : maximum 300 caractères
+        // =============================================
+        // LIMITE ROBLOX TTS
+        // =============================================
+
         if (answer.length > 300) {
 
             answer =
@@ -224,9 +264,9 @@ app.post("/chat", async (req, res) => {
 
         }
 
-        // ---------------------------------------------
-        // AJOUT RÉPONSE IA À LA MÉMOIRE
-        // ---------------------------------------------
+        // =============================================
+        // AJOUT À LA MÉMOIRE
+        // =============================================
 
         history.push({
 
@@ -240,9 +280,9 @@ app.post("/chat", async (req, res) => {
 
         });
 
-        // ---------------------------------------------
-        // LIMITE HISTORIQUE
-        // ---------------------------------------------
+        // =============================================
+        // LIMITE DE MÉMOIRE
+        // =============================================
 
         if (history.length > 20) {
 
@@ -253,15 +293,20 @@ app.post("/chat", async (req, res) => {
 
         }
 
-        console.log(
-            `🤖 NPC → ${answer}`
-        );
+        // =============================================
+        // LOG
+        // =============================================
 
-        // ---------------------------------------------
-        // RÉPONSE ROBLOX
-        // ---------------------------------------------
+        console.log("=================================");
+        console.log("🤖 RÉPONSE NPC");
+        console.log(answer);
+        console.log("=================================");
 
-        return res.json({
+        // =============================================
+        // RÉPONSE À ROBLOX
+        // =============================================
+
+        return res.status(200).json({
 
             reply: answer
 
@@ -269,30 +314,49 @@ app.post("/chat", async (req, res) => {
 
     } catch (error) {
 
-        console.error(
-            "❌ ERREUR GEMINI :"
-        );
+        // =============================================
+        // ERREUR GEMINI
+        // =============================================
 
+        console.error("=================================");
+        console.error("❌ ERREUR GEMINI");
+        console.error("=================================");
+
+        console.error("Message :", error?.message);
+        console.error("Status :", error?.status);
+        console.error("Code :", error?.code);
+
+        console.error("Erreur complète :");
         console.error(error);
+
+        console.error("=================================");
+
+        // =============================================
+        // RÉPONSE D'ERREUR
+        // =============================================
 
         return res.status(500).json({
 
-            error: "Erreur du serveur IA"
+            error: "Erreur du serveur IA",
+
+            details:
+                error?.message ||
+                "Erreur Gemini inconnue"
 
         });
 
     } finally {
 
+        // Libère le joueur
         processing.delete(playerId);
 
     }
 
 });
 
-
-// ---------------------------------------------
-// TEST SERVEUR
-// ---------------------------------------------
+// =============================================
+// ROUTE TEST
+// =============================================
 
 app.get("/", (req, res) => {
 
@@ -302,18 +366,42 @@ app.get("/", (req, res) => {
 
 });
 
+// =============================================
+// ROUTE HEALTH CHECK
+// =============================================
 
-// ---------------------------------------------
-// DÉMARRAGE RAILWAY
-// ---------------------------------------------
+app.get("/health", (req, res) => {
 
-const PORT =
-    process.env.PORT || 3000;
+    res.status(200).json({
 
-app.listen(PORT, "0.0.0.0", () => {
+        status: "online",
 
-    console.log(
-        `🤖 Serveur NPC IA lancé sur le port ${PORT}`
-    );
+        gemini:
+            !!process.env.GEMINI_API_KEY,
+
+        timestamp:
+            new Date().toISOString()
+
+    });
 
 });
+
+// =============================================
+// DÉMARRAGE
+// =============================================
+
+app.listen(
+    PORT,
+    "0.0.0.0",
+    () => {
+
+        console.log("=================================");
+        console.log("🤖 NPC IA ONLINE");
+        console.log("=================================");
+        console.log(`🌐 Port : ${PORT}`);
+        console.log("🧠 Gemini : configuré");
+        console.log("🎮 Roblox : prêt");
+        console.log("=================================");
+
+    }
+);
