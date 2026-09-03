@@ -12,7 +12,7 @@ const app = express();
 
 app.use(express.json({ limit: "10kb" }));
 
-const PORT = process.env.PORT || 3000;
+const PORT = 3000;
 
 if (!process.env.GEMINI_API_KEY) {
     console.error("❌ GEMINI_API_KEY manquante !");
@@ -398,7 +398,7 @@ app.listen(
         console.log("=================================");
         console.log("🤖 NPC IA ONLINE");
         console.log("=================================");
-        console.log(`🌐 Port : ${PORT}`);
+        console.log(`🌐 Port : 3000`);
         console.log("🧠 Gemini : configuré");
         console.log("🎮 Roblox : prêt");
         console.log("=================================");
