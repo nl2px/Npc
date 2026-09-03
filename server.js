@@ -19,7 +19,7 @@ if (!process.env.GEMINI_API_KEY) {
     process.exit(1);
 }
 
-const ai = new GoogleGenAI({
+const client = new GoogleGenAI({
     apiKey: process.env.GEMINI_API_KEY
 });
 
@@ -192,19 +192,16 @@ app.post("/chat", async (req, res) => {
         console.log("🤖 Envoi de la requête à Gemini...");
 
         const response =
-            await ai.models.generateContent({
+            await client.models.generateContent({
 
                 model: "gemini-2.0-flash",
 
                 contents: recentHistory,
 
-                config: {
+                systemInstruction: SYSTEM_PROMPT,
 
-                    systemInstruction:
-                        SYSTEM_PROMPT,
-
+                generationConfig: {
                     maxOutputTokens: 100
-
                 }
 
             });
@@ -405,3 +402,4 @@ app.listen(
 
     }
 );
+
